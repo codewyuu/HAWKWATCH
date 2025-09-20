@@ -2,7 +2,15 @@ import { Resend } from 'resend'
 import { NextResponse } from 'next/server'
 // import { createClient } from '@/utils/supabase/server' 
 
-const resend = new Resend(process.env.RESEND_API_KEY)
+// Initialize Resend only when needed
+let resend: Resend | null = null;
+
+function getResendClient() {
+  if (!resend && process.env.RESEND_API_KEY) {
+    resend = new Resend(process.env.RESEND_API_KEY);
+  }
+  return resend;
+}
 
 export async function POST(request: Request) {
   console.log('API route hit!')
@@ -16,7 +24,12 @@ export async function POST(request: Request) {
     const { title, description } = await request.json()
     console.log('Sending email to: graceshao203@gmail.com')
 
-    const { data, error } = await resend.emails.send({
+    const resendClient = getResendClient();
+    if (!resendClient) {
+      return NextResponse.json({ error: 'Email service not configured' }, { status: 500 })
+    }
+
+    const { data, error } = await resendClient.emails.send({
       from: 'HawkWatch <onboarding@resend.dev>',
       to: ['graceshao203@gmail.com'], // Hardcoded email address
       subject: `[ALERT] ${title}`,

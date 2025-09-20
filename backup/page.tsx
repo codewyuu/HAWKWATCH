@@ -9,23 +9,24 @@ export default function TestAPI() {
 	const [response, setResponse] = useState("");
 	const [loading, setLoading] = useState(false);
 
-	const handleSubmit = async (e: React.FormEvent) => {
-		e.preventDefault();
+	const handleSubmit = async () => {
 		if (!prompt.trim()) return;
 
 		setLoading(true);
 		try {
 			const result = await generateGeminiResponse(prompt);
-			setResponse(result);
+			if (result.success) {
+				setResponse(result.response || "No response generated");
+			} else {
+				setResponse(result.error || "Failed to generate response");
+			}
 		} catch (error) {
 			console.error("Error:", error);
 			setResponse("An error occurred while generating the response.");
 		} finally {
 			setLoading(false);
 		}
-	};
-
-	return (
+	};	return (
 		<div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
 			<main className="flex flex-col gap-8 row-start-2 items-center w-full max-w-2xl">
 				<Image

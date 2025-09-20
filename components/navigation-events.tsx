@@ -1,10 +1,10 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, Suspense } from 'react';
 import { usePathname, useSearchParams } from 'next/navigation';
 import NProgress from 'nprogress';
 
-export function NavigationEvents() {
+function NavigationEventsInternal() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
@@ -25,4 +25,12 @@ export function NavigationEvents() {
   }, [pathname, searchParams]);
 
   return null;
+}
+
+export function NavigationEvents() {
+  return (
+    <Suspense fallback={null}>
+      <NavigationEventsInternal />
+    </Suspense>
+  );
 }
