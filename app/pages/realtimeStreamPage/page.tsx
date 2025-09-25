@@ -13,13 +13,12 @@ import type { Timestamp } from "@/app/types"
 import { detectEvents, type VideoEvent } from "./actions"
 
 // Dynamically import TensorFlow.js and models
+import { loadTensorFlowModules, isTensorFlowReady, type TensorFlowModules } from '@/lib/tensorflow-loader'
 import type * as blazeface from '@tensorflow-models/blazeface'
 import type * as posedetection from '@tensorflow-models/pose-detection'
 import type * as tf from '@tensorflow/tfjs'
 
-let tfjs: typeof tf
-let blazefaceModel: typeof blazeface
-let poseDetection: typeof posedetection
+let tfModules: TensorFlowModules | null = null
 
 interface SavedVideo {
   id: string
@@ -82,47 +81,36 @@ export default function Page() {
   // 1) Initialize ML Models
   // -----------------------------
   const initMLModels = async () => {
+    // Only run on client side
+    if (typeof window === 'undefined') {
+      return
+    }
+    
     try {
       setIsInitializing(true)
       setMlModelsReady(false)
       setError(null)
 
-      // Start loading TensorFlow.js in parallel with other initialization
-      setInitializationProgress('Loading TensorFlow.js...')
-      const tfPromise = import('@tensorflow/tfjs').then(async (tf) => {
-        tfjs = tf
-        // Configure TF.js for better performance
-        await tf.ready()
-        await tf.setBackend('webgl')
-        await tf.env().set('WEBGL_FORCE_F16_TEXTURES', true) // Use F16 textures for better performance
-        await tf.env().set('WEBGL_PACK', true) // Enable texture packing
-        await tf.env().set('WEBGL_CHECK_NUMERICAL_PROBLEMS', false) // Disable numerical checks in production
-      })
+      setInitializationProgress('Loading TensorFlow.js modules...')
+      
+      // Load TensorFlow modules using the utility
+      tfModules = await loadTensorFlowModules()
+      
+      if (!tfModules) {
+        throw new Error('Failed to load TensorFlow.js modules')
+      }
 
       // Load models in parallel
-      setInitializationProgress('Loading face and pose detection models...')
-      const [blazefaceModule, poseDetectionModule] = await Promise.all([
-        import('@tensorflow-models/blazeface'),
-        import('@tensorflow-models/pose-detection')
-      ])
-
-      blazefaceModel = blazefaceModule
-      poseDetection = poseDetectionModule
-
-      // Wait for TF.js to be ready
-      await tfPromise
-
-      // Load models in parallel
-      setInitializationProgress('Initializing models...')
+      setInitializationProgress('Initializing AI models...')
       const [faceModel, poseModel] = await Promise.all([
-        blazefaceModel.load({
+        tfModules.blazefaceModel.load({
           maxFaces: 1, // Limit to 1 face for better performance
           scoreThreshold: 0.5 // Increase threshold for better performance
         }),
-        poseDetection.createDetector(
-          poseDetection.SupportedModels.MoveNet,
+        tfModules.poseDetection.createDetector(
+          tfModules.poseDetection.SupportedModels.MoveNet,
           {
-            modelType: poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING,
+            modelType: tfModules.poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING,
             enableSmoothing: true,
             minPoseScore: 0.3
           }
@@ -233,6 +221,12 @@ export default function Page() {
   // -----------------------------
   const runDetection = async () => {
     if (!isRecordingRef.current) return
+
+    // Check if ML models are ready before proceeding
+    if (!mlModelsReady || !faceModelRef.current || !poseModelRef.current) {
+      detectionFrameRef.current = requestAnimationFrame(runDetection)
+      return
+    }
 
     // Throttle detection to ~10 FPS (every 100ms)
     const now = performance.now()
@@ -575,12 +569,18 @@ export default function Page() {
     // Start recording with a timeslice of 1000ms (1 second)
     mediaRecorder.start(1000)
 
-    // Start the TensorFlow detection loop
+    // Start the TensorFlow detection loop only if models are ready
     if (detectionFrameRef.current) {
       cancelAnimationFrame(detectionFrameRef.current)
     }
-    lastDetectionTime.current = 0
-    detectionFrameRef.current = requestAnimationFrame(runDetection)
+    
+    // Only start detection if ML models are loaded
+    if (mlModelsReady) {
+      lastDetectionTime.current = 0
+      detectionFrameRef.current = requestAnimationFrame(runDetection)
+    } else {
+      console.warn("ML models not ready yet, detection will start once loaded")
+    }
 
     // Set up repeated frame analysis every 3 seconds
     if (analysisIntervalRef.current) {
@@ -681,6 +681,9 @@ export default function Page() {
   }, [recordedVideoUrl])
 
   useEffect(() => {
+    // Only initialize on client side
+    if (typeof window === 'undefined') return
+    
     initSpeechRecognition()
     const init = async () => {
       await startWebcam()
@@ -693,11 +696,32 @@ export default function Page() {
       if (analysisIntervalRef.current) clearInterval(analysisIntervalRef.current)
       if (detectionFrameRef.current) cancelAnimationFrame(detectionFrameRef.current)
     }
-  }, [])
+  }, [isClient]) // Only run after client-side hydration
+
+  // Start detection when ML models become ready and recording is active
+  useEffect(() => {
+    if (mlModelsReady && isRecordingRef.current && !detectionFrameRef.current) {
+      console.log("Starting TensorFlow detection now that models are ready")
+      lastDetectionTime.current = 0
+      detectionFrameRef.current = requestAnimationFrame(runDetection)
+    }
+  }, [mlModelsReady])
 
   // -----------------------------
   // Render
   // -----------------------------
+  // Don't render anything on server-side
+  if (!isClient) {
+    return (
+      <div className="min-h-screen bg-black text-white flex items-center justify-center p-4">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="w-8 h-8 animate-spin text-purple-500" />
+          <p className="text-zinc-300">Loading application...</p>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-black text-white flex items-center justify-center p-4">
       <div className="w-full max-w-4xl relative">
