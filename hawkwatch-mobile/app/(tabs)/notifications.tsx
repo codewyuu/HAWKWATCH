@@ -2,7 +2,27 @@ import React, { useState, useEffect } from 'react'
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert, Switch } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import AsyncStorage from '@react-native-async-storage/async-storage'
-import * as Notifications from 'expo-notifications'
+import Constants from 'expo-constants'
+
+// Only import notifications in development builds, not Expo Go
+const isExpoGo = Constants.appOwnership === 'expo'
+let Notifications: any = null
+
+if (!isExpoGo) {
+  // Only import and configure notifications in development builds
+  try {
+    Notifications = require('expo-notifications')
+    Notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowAlert: true,
+        shouldPlaySound: false,
+        shouldSetBadge: false,
+      }),
+    })
+  } catch (error) {
+    console.log('Notifications not available in this environment')
+  }
+}
 
 interface NotificationItem {
   id: string
@@ -47,13 +67,16 @@ export default function NotificationsScreen() {
   }, [])
 
   const setupNotificationHandler = () => {
-    Notifications.setNotificationHandler({
-      handleNotification: async () => ({
-        shouldShowAlert: true,
-        shouldPlaySound: true,
-        shouldSetBadge: false,
-      }),
-    })
+    // Only set up notifications in development builds, not Expo Go
+    if (Notifications && !isExpoGo) {
+      Notifications.setNotificationHandler({
+        handleNotification: async () => ({
+          shouldShowAlert: true,
+          shouldPlaySound: true,
+          shouldSetBadge: false,
+        }),
+      })
+    }
   }
 
   const loadNotifications = async () => {

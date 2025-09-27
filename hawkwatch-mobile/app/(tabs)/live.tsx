@@ -1,7 +1,10 @@
-import { View, Text, StyleSheet, TouchableOpacity, Alert, Dimensions } from 'react-native'
+import { View, Text, StyleSheet, TouchableOpacity, Alert, Dimensions, FlatList } from 'react-native'
 import { useState, useRef, useEffect } from 'react'
 import { Camera, CameraView } from 'expo-camera'
 import { Ionicons } from '@expo/vector-icons'
+import { aiDetectionService, VideoEvent } from '../../lib/aiDetection'
+import { GeminiFooter } from '../../components/gemini-footer'
+import { NotificationService } from '../../lib/notifications'
 
 interface Timestamp {
   timestamp: string
@@ -22,6 +25,12 @@ export default function LiveAnalysisScreen() {
     (async () => {
       const { status } = await Camera.requestCameraPermissionsAsync()
       setHasPermission(status === 'granted')
+      
+      // Initialize notifications
+      const notificationPermission = await NotificationService.initialize()
+      if (!notificationPermission) {
+        Alert.alert('Notification permission required for security alerts')
+      }
     })()
   }, [])
 
@@ -43,51 +52,93 @@ export default function LiveAnalysisScreen() {
     }
   }
 
+  const sendSecurityAlert = async (description: string) => {
+    // Send push notification using the notification service
+    await NotificationService.sendSecurityAlert(description, 'high')
+    
+    // Show in-app alert
+    Alert.alert(
+      '⚠️ Security Alert', 
+      description, 
+      [
+        { 
+          text: 'View Details', 
+          onPress: () => console.log('Security alert details requested'),
+          style: 'default' 
+        },
+        { 
+          text: 'Acknowledge', 
+          style: 'cancel' 
+        }
+      ],
+      { cancelable: false }
+    )
+  }
+
   const stopRecording = () => {
     setIsRecording(false)
     setIsAnalyzing(false)
   }
 
   const startAnalysisLoop = () => {
-    // Simulate analysis every 3 seconds (like web app)
+    console.log('Starting analysis loop...')
+    // Run analysis every 3 seconds
     const interval = setInterval(() => {
       if (!isRecording) {
+        console.log('Recording stopped, clearing analysis interval')
         clearInterval(interval)
         return
       }
       
+      console.log('Running scheduled analysis...')
       analyzeFrame()
     }, 3000)
+    
+    // Run first analysis immediately
+    setTimeout(() => {
+      console.log('Running initial analysis...')
+      analyzeFrame()
+    }, 500)
   }
 
   const analyzeFrame = async () => {
     try {
-      // Simulate frame capture and analysis
-      // In real implementation, this would use TensorFlow.js and Gemini API
-      const mockEvents = [
-        { description: 'Person detected in frame', isDangerous: false },
-        { description: 'Suspicious movement detected', isDangerous: true },
-        { description: 'Normal activity observed', isDangerous: false },
-      ]
+      console.log('Starting frame analysis...')
       
-      const randomEvent = mockEvents[Math.floor(Math.random() * mockEvents.length)]
-      const currentTime = new Date().toLocaleTimeString()
+      // Capture frame from camera
+      const base64Image = await aiDetectionService.captureFrameFromCamera(cameraRef)
       
-      if (Math.random() > 0.7) { // 30% chance of event
+      if (!base64Image) {
+        console.log('No frame captured, skipping analysis')
+        return
+      }
+
+      console.log('Analyzing captured frame with AI...')
+      
+      // Use AI detection service with real image
+      const { events } = await aiDetectionService.detectEvents(base64Image, transcript)
+      
+      console.log('AI Analysis completed, events found:', events.length)
+      
+      // Process detected events (only real events, no mock data)
+      events.forEach(event => {
         const newTimestamp: Timestamp = {
-          timestamp: currentTime,
-          description: randomEvent.description,
-          isDangerous: randomEvent.isDangerous
+          timestamp: event.timestamp,
+          description: event.description,
+          isDangerous: event.isDangerous
         }
         
         setTimestamps(prev => [...prev, newTimestamp])
         
-        if (randomEvent.isDangerous) {
-          Alert.alert('⚠️ Security Alert', randomEvent.description)
+        // Send security alert for dangerous events
+        if (event.isDangerous) {
+          sendSecurityAlert(event.description)
         }
-      }
+      })
+
     } catch (error) {
       console.error('Analysis error:', error)
+      // Log error but don't create mock events - only show real detections
     }
   }
 
@@ -168,11 +219,17 @@ export default function LiveAnalysisScreen() {
       </View>
 
       <View style={styles.timeline}>
-        <Text style={styles.timelineTitle}>Event Timeline ({timestamps.length})</Text>
-        <View style={styles.timestampList}>
-          {timestamps.slice(-3).map((item, index) => (
+        <View style={styles.timelineHeader}>
+          <Text style={styles.timelineTitle}>Event Timeline ({timestamps.length})</Text>
+          <GeminiFooter />
+        </View>
+        <FlatList
+          data={timestamps}
+          keyExtractor={(item, index) => index.toString()}
+          style={styles.timestampList}
+          showsVerticalScrollIndicator={true}
+          renderItem={({ item }) => (
             <View 
-              key={index} 
               style={[
                 styles.timestampItem,
                 item.isDangerous && styles.dangerousItem
@@ -184,11 +241,12 @@ export default function LiveAnalysisScreen() {
                 <Text style={styles.dangerTag}>⚠️ ALERT</Text>
               )}
             </View>
-          ))}
-          {timestamps.length === 0 && (
+          )}
+          ListEmptyComponent={() => (
             <Text style={styles.emptyText}>No events detected yet</Text>
           )}
-        </View>
+          inverted={true}
+        />
       </View>
     </View>
   )
@@ -272,17 +330,25 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   timeline: {
+    flex: 1,
     paddingHorizontal: 16,
     paddingBottom: 20,
+    minHeight: 150,
+  },
+  timelineHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
   },
   timelineTitle: {
     fontSize: 16,
     fontWeight: '600',
     color: '#ffffff',
-    marginBottom: 10,
   },
   timestampList: {
-    maxHeight: 120,
+    flex: 1,
+    maxHeight: 200,
   },
   timestampItem: {
     backgroundColor: '#1f2937',

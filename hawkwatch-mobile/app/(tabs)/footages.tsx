@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert } from 'react-native'
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert, Image } from 'react-native'
+import { Video, ResizeMode } from 'expo-av'
 import { Ionicons } from '@expo/vector-icons'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 
@@ -12,16 +13,20 @@ interface Timestamp {
 interface SavedVideo {
   id: string
   name: string
-  url: string
+  url: any
   thumbnailUrl: string
   timestamps: Timestamp[]
   createdAt: string
+  boundingBoxes?: any
 }
 
 export default function FootagesScreen() {
   const [savedVideos, setSavedVideos] = useState<SavedVideo[]>([])
   const [selectedVideo, setSelectedVideo] = useState<SavedVideo | null>(null)
   const [isPlaying, setIsPlaying] = useState(false)
+  const [videoStatus, setVideoStatus] = useState<any>({})
+  const [currentBoundingBoxes, setCurrentBoundingBoxes] = useState<any[]>([])
+  const videoRef = React.useRef<Video>(null)
 
   useEffect(() => {
     loadSavedVideos()
@@ -29,18 +34,18 @@ export default function FootagesScreen() {
 
   const loadSavedVideos = async () => {
     try {
-      const stored = await AsyncStorage.getItem('hawkwatch_videos')
-      if (stored) {
-        setSavedVideos(JSON.parse(stored))
-      } else {
-        // Load demo videos matching your web app data
-        const demoVideos: SavedVideo[] = [
+      // Always load from assets folder for now (clear any cached data)
+      await AsyncStorage.removeItem('hawkwatch_videos')
+      
+      // Load actual videos from assets/videos folder
+      const demoVideos: SavedVideo[] = [
           {
             id: '1',
             name: 'Fighting0',
-            url: '/videos/Fighting0.mp4',
-            thumbnailUrl: '/placeholder.svg?height=120&width=160',
+            url: require('../../assets/videos/Fighting0.mp4'),
+            thumbnailUrl: '', // Will use video icon for now
             createdAt: '2025-01-24T10:30:00Z',
+            boundingBoxes: require('../../assets/bounding_boxes/Fighting0_boxes.json'),
             timestamps: [
               { timestamp: '00:02', description: 'Individual becomes aggressive and throws items behind bar', isDangerous: true },
               { timestamp: '00:25', description: 'Individual escalates destructive behavior', isDangerous: true },
@@ -50,9 +55,10 @@ export default function FootagesScreen() {
           {
             id: '2',
             name: 'Shoplifting1',
-            url: '/videos/Shoplifting1.mp4',
-            thumbnailUrl: '/placeholder.svg?height=120&width=160',
+            url: require('../../assets/videos/Shoplifting1.mp4'),
+            thumbnailUrl: '', // Will use video icon for now
             createdAt: '2025-01-24T09:15:00Z',
+            boundingBoxes: require('../../assets/bounding_boxes/Shoplifting1_boxes.json'),
             timestamps: [
               { timestamp: '00:05', description: 'Person enters store and browses items normally', isDangerous: false },
               { timestamp: '00:18', description: 'Suspicious behavior: looking around frequently', isDangerous: true },
@@ -63,20 +69,59 @@ export default function FootagesScreen() {
           {
             id: '3',
             name: 'Robbery1',
-            url: '/videos/Robbery1.mp4',
-            thumbnailUrl: '/placeholder.svg?height=120&width=160',
+            url: require('../../assets/videos/Robbery1.mp4'),
+            thumbnailUrl: '', // Will use video icon for now
             createdAt: '2025-01-24T08:45:00Z',
+            boundingBoxes: require('../../assets/bounding_boxes/Robbery1_boxes.json'),
             timestamps: [
               { timestamp: '00:03', description: 'Individual enters store with hood up', isDangerous: true },
               { timestamp: '00:12', description: 'Approaches counter aggressively', isDangerous: true },
               { timestamp: '00:20', description: 'Demands money from cashier', isDangerous: true },
               { timestamp: '00:35', description: 'Flees scene with stolen goods', isDangerous: true }
             ]
+          },
+          {
+            id: '4',
+            name: 'Fighting1',
+            url: require('../../assets/videos/Fighting1.mp4'),
+            thumbnailUrl: '',
+            createdAt: '2025-01-24T07:30:00Z',
+            boundingBoxes: require('../../assets/bounding_boxes/Fighting1_boxes.json'),
+            timestamps: [
+              { timestamp: '00:05', description: 'Verbal altercation begins', isDangerous: true },
+              { timestamp: '00:18', description: 'Physical confrontation escalates', isDangerous: true },
+              { timestamp: '00:35', description: 'Security intervention required', isDangerous: true }
+            ]
+          },
+          {
+            id: '5',
+            name: 'Shoplifting0',
+            url: require('../../assets/videos/Shoplifting0.mp4'),
+            thumbnailUrl: '',
+            createdAt: '2025-01-24T06:45:00Z',
+            boundingBoxes: require('../../assets/bounding_boxes/Shoplifting0_boxes.json'),
+            timestamps: [
+              { timestamp: '00:08', description: 'Suspicious customer behavior observed', isDangerous: true },
+              { timestamp: '00:22', description: 'Item concealment attempt detected', isDangerous: true },
+              { timestamp: '00:40', description: 'Exit without payment confirmed', isDangerous: true }
+            ]
+          },
+          {
+            id: '6',
+            name: 'Vandalism3',
+            url: require('../../assets/videos/Vandalism3.mp4'),
+            thumbnailUrl: '',
+            createdAt: '2025-01-24T05:20:00Z',
+            boundingBoxes: require('../../assets/bounding_boxes/Vandalism3_boxes.json'),
+            timestamps: [
+              { timestamp: '00:03', description: 'Property damage initiated', isDangerous: true },
+              { timestamp: '00:15', description: 'Destructive behavior continues', isDangerous: true },
+              { timestamp: '00:28', description: 'Vandalism incident concluded', isDangerous: true }
+            ]
           }
         ]
         setSavedVideos(demoVideos)
         await AsyncStorage.setItem('hawkwatch_videos', JSON.stringify(demoVideos))
-      }
     } catch (error) {
       console.error('Error loading videos:', error)
     }
@@ -92,10 +137,22 @@ export default function FootagesScreen() {
     setIsPlaying(false)
   }
 
-  const jumpToTimestamp = (timestamp: string) => {
+  const jumpToTimestamp = async (timestamp: string) => {
     const [minutes, seconds] = timestamp.split(':').map(Number)
     const timeInMillis = (minutes * 60 + seconds) * 1000
-    Alert.alert('Jump to Timestamp', `Would jump to ${timestamp} (${timeInMillis}ms)`)
+    
+    if (videoRef.current) {
+      try {
+        await videoRef.current.setPositionAsync(timeInMillis)
+        if (!isPlaying) {
+          await videoRef.current.playAsync()
+          setIsPlaying(true)
+        }
+      } catch (error) {
+        console.error('Error jumping to timestamp:', error)
+        Alert.alert('Error', 'Could not jump to timestamp')
+      }
+    }
   }
 
   const formatDate = (dateString: string) => {
@@ -108,7 +165,18 @@ export default function FootagesScreen() {
       onPress={() => selectVideo(item)}
     >
       <View style={styles.thumbnail}>
-        <Ionicons name="videocam" size={40} color="#9C27B0" />
+        <Video
+          source={item.url}
+          style={styles.thumbnailVideo}
+          resizeMode={ResizeMode.COVER}
+          shouldPlay={false}
+          isLooping={false}
+          isMuted={true}
+          useNativeControls={false}
+        />
+        <View style={styles.thumbnailOverlay}>
+          <Ionicons name="play-circle" size={32} color="rgba(255,255,255,0.9)" />
+        </View>
       </View>
       <View style={styles.videoInfo}>
         <Text style={styles.videoTitle}>{item.name}</Text>
@@ -156,20 +224,80 @@ export default function FootagesScreen() {
         </View>
 
         <View style={styles.videoPlayerContainer}>
-          {/* Placeholder for video player - in production this would be expo-av Video component */}
-          <View style={styles.videoPlaceholder}>
-            <Ionicons name="play-circle" size={80} color="#9C27B0" />
-            <Text style={styles.placeholderText}>Video Player</Text>
-            <Text style={styles.placeholderSubtext}>
-              {selectedVideo.name} • {selectedVideo.timestamps.length} events
-            </Text>
-          </View>
+          <Video
+            ref={videoRef}
+            source={selectedVideo.url}
+            style={styles.video}
+            useNativeControls
+            resizeMode={ResizeMode.CONTAIN}
+            shouldPlay={isPlaying}
+            isLooping
+            onPlaybackStatusUpdate={(status: any) => {
+              setVideoStatus(status)
+              // Show real bounding boxes based on current frame
+              const currentTime = status.positionMillis || 0
+              const currentTimeSeconds = currentTime / 1000
+              const fps = selectedVideo.boundingBoxes?.video_info?.fps || 30
+              const currentFrame = Math.floor(currentTimeSeconds * fps)
+              
+              if (selectedVideo.boundingBoxes?.frames?.[currentFrame]) {
+                const frameData = selectedVideo.boundingBoxes.frames[currentFrame]
+                if (frameData.boxes && frameData.boxes.length > 0) {
+                  setCurrentBoundingBoxes(frameData.boxes)
+                } else {
+                  setCurrentBoundingBoxes([])
+                }
+              } else {
+                setCurrentBoundingBoxes([])
+              }
+            }}
+          />
+          {currentBoundingBoxes.length > 0 && (
+            <View style={styles.boundingBoxOverlay}>
+              {currentBoundingBoxes.map((box: number[], index: number) => {
+                const [x1, y1, x2, y2] = box
+                const videoInfo = selectedVideo.boundingBoxes?.video_info
+                
+                // Calculate relative positions (percentage-based)
+                const leftPercent = (x1 / videoInfo.width) * 100
+                const topPercent = (y1 / videoInfo.height) * 100
+                const widthPercent = ((x2 - x1) / videoInfo.width) * 100
+                const heightPercent = ((y2 - y1) / videoInfo.height) * 100
+                
+                return (
+                  <View
+                    key={index}
+                    style={[
+                      styles.boundingBox,
+                      {
+                        left: `${leftPercent}%`,
+                        top: `${topPercent}%`,
+                        width: `${widthPercent}%`,
+                        height: `${heightPercent}%`,
+                      }
+                    ]}
+                  >
+                    <Text style={styles.boundingBoxLabel}>PERSON</Text>
+                  </View>
+                )
+              })}
+            </View>
+          )}
         </View>
 
         <View style={styles.controls}>
           <TouchableOpacity 
             style={styles.playButton}
-            onPress={() => setIsPlaying(!isPlaying)}
+            onPress={async () => {
+              if (videoRef.current) {
+                if (isPlaying) {
+                  await videoRef.current.pauseAsync()
+                } else {
+                  await videoRef.current.playAsync()
+                }
+                setIsPlaying(!isPlaying)
+              }
+            }}
           >
             <Ionicons 
               name={isPlaying ? "pause" : "play"} 
@@ -283,6 +411,26 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 16,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  thumbnailVideo: {
+    width: '100%',
+    height: '100%',
+  },
+  thumbnailOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.3)',
+  },
+  thumbnailImage: {
+    width: '100%',
+    height: '100%',
   },
   videoInfo: {
     flex: 1,
@@ -315,11 +463,41 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   videoPlayerContainer: {
-    height: 250,
+    height: 220,
     margin: 16,
     borderRadius: 12,
     overflow: 'hidden',
     backgroundColor: '#1f2937',
+  },
+  video: {
+    flex: 1,
+  },
+  boundingBoxOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    pointerEvents: 'none',
+  },
+  boundingBox: {
+    position: 'absolute',
+    borderWidth: 2,
+    borderColor: '#00ff00',
+    backgroundColor: 'transparent',
+    minHeight: 20,
+    minWidth: 20,
+  },
+  boundingBoxLabel: {
+    color: '#00ff00',
+    fontSize: 10,
+    fontWeight: 'bold',
+    backgroundColor: 'rgba(0, 255, 0, 0.8)',
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    position: 'absolute',
+    top: -16,
+    left: 0,
   },
   videoPlaceholder: {
     flex: 1,
@@ -359,8 +537,9 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   timelineSection: {
-    flex: 1,
+    height: 200,
     paddingHorizontal: 16,
+    paddingBottom: 10,
   },
   timelineTitle: {
     fontSize: 16,
@@ -369,7 +548,8 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   timestampList: {
-    flex: 1,
+    height: 150,
+    paddingBottom: 10,
   },
   timestampItem: {
     backgroundColor: '#1f2937',

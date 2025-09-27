@@ -45,8 +45,7 @@
           "icon": "./assets/notification-icon.png",
           "color": "#9C27B0"
         }
-      ],
-      "expo-asset"
+      ]
     ],
     "permissions": [
       "CAMERA",
