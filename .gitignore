@@ -45,3 +45,5 @@ hawkwatch-mobile/node_modules/
 *.log
 .expo/
 .env.local
+
+/hawkwatch-mobile
