@@ -75,7 +75,7 @@ def main():
 
     model = genai.GenerativeModel(
         # model_name="gemini-2.0-pro-exp-02-05",
-        model_name="gemini-2.0-flash",
+        model_name="gemini-2.5-flash",
         generation_config=generation_config,
     )
 

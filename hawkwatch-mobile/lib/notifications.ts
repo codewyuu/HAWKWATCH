@@ -11,7 +11,6 @@ export class NotificationService {
         shouldSetBadge: true,
       }),
     })
-
     // Request permissions
     const { status } = await Notifications.requestPermissionsAsync({
       ios: {

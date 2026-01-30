@@ -43,15 +43,15 @@ export class AIDetectionService {
             // Try different model versions in order of preference
             let model;
             try {
-                model = this.genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
-                console.log('Initialized Gemini model: gemini-2.0-flash');
+                model = this.genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+                console.log('Initialized Gemini model: gemini-2.5-flash');
             } catch (error) {
-                console.log('gemini-2.0-flash not available, trying gemini-1.5-flash');
+                console.log('gemini-2.5-flash not available, trying gemini-2.5-flash-lite');
                 try {
-                    model = this.genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-                    console.log('Initialized Gemini model: gemini-1.5-flash');
+                    model = this.genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
+                    console.log('Initialized Gemini model: gemini-2.5-flash-lite');
                 } catch (error2) {
-                    console.log('gemini-1.5-flash not available, trying gemini-pro-vision');
+                    console.log('gemini-2.5-flash-lite not available, trying gemini-pro-vision');
                     try {
                         model = this.genAI.getGenerativeModel({ model: "gemini-pro-vision" });
                         console.log('Initialized Gemini model: gemini-pro-vision');

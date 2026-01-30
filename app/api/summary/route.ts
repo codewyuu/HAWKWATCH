@@ -30,7 +30,7 @@ export async function POST(request: Request) {
     ).join('\n')
 
     const response = await openai.chat.completions.create({
-      model: "gpt-3.5-turbo",
+      model: "gpt-5.0",
       messages: [
         {
           role: "system",
